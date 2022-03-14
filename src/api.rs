@@ -47,7 +47,7 @@ pub struct Api {
 
 impl Api {
     pub(crate) async fn push(&mut self, logs: NewrLogs, traces: NewrSpans) {
-        log::debug!(
+        println!(
             "pushing logs and traces, logs_queue_len={}, spans_queue_len={}",
             self.logs_queue.len(),
             self.spans_queue.len(),
@@ -66,7 +66,7 @@ impl Api {
             return;
         }
 
-        log::debug!(
+        println!(
             "flushing logs and traces, logs_queue_len={}, spans_queue_len={}",
             self.logs_queue.len(),
             self.spans_queue.len(),
@@ -84,7 +84,7 @@ impl Api {
                 (Timeount(d), _) | (_, Timeount(d)) => sleep(d).await,
 
                 (Finished, Finished) => {
-                    log::info!(
+                    println!(
                         "flushed logs and traces, logs_queue_len={}, spans_queue_len={}",
                         self.logs_queue.len(),
                         self.spans_queue.len(),
@@ -115,32 +115,35 @@ impl Default for Api {
     }
 }
 
+impl Drop for Api {
+    fn drop(&mut self) {
+        println!("Drop triggered");
+    }
+}
+
 impl From<String> for Api {
     fn from(key: String) -> Self {
-        Api {
-            key,
-            ..Default::default()
-        }
+        let mut api = Api::default();
+        api.key = key;
+        api
     }
 }
 
 impl From<&str> for Api {
     fn from(key: &str) -> Self {
-        Api {
-            key: key.to_string(),
-            ..Default::default()
-        }
+        let mut api = Api::default();
+        api.key = key.to_string();
+        api
     }
 }
 
 impl From<(String, ApiEndpoint)> for Api {
     fn from(t: (String, ApiEndpoint)) -> Self {
-        Api {
-            key: t.0,
-            log_endpoint: t.1.clone(),
-            trace_endpoint: t.1,
-            ..Default::default()
-        }
+        let mut api = Api::default();
+        api.key = t.0;
+        api.log_endpoint = t.1.clone();
+        api.trace_endpoint = t.1;
+        api
     }
 }
 
@@ -187,7 +190,7 @@ impl<'a, T: Sendable> Service<'a, T> {
         match status {
             // success
             200..=299 => {
-                log::debug!(
+                println!(
                     "recevied {} response, sent={}, remaining={}",
                     status,
                     left.len(),
@@ -207,17 +210,17 @@ impl<'a, T: Sendable> Service<'a, T> {
             }
 
             400 | 401 | 403 | 404 | 405 | 409 | 410 | 411 => {
-                log::info!("recevied {} response", status);
+                println!("recevied {} response", status);
 
                 ServiceStatus::Finished
             }
 
             // 	The payload was too big.
             413 => {
-                log::debug!("recevied 413 response, splitting payload");
+                println!("recevied 413 response, splitting payload");
 
                 if self.batch_len == 1 {
-                    log::info!("dropping paylod");
+                    println!("dropping paylod");
 
                     ServiceStatus::Finished
                 } else {
@@ -236,11 +239,11 @@ impl<'a, T: Sendable> Service<'a, T> {
 
                 match seconds {
                     Some(s) => {
-                        log::debug!("recevied 429 response, retry after {} seconds", s);
+                        println!("recevied 429 response, retry after {} seconds", s);
                         ServiceStatus::Timeount(Duration::from_secs(s))
                     }
                     None => {
-                        log::debug!("recevied 429 response, but `retry-after` not persent");
+                        println!("recevied 429 response, but `retry-after` not persent");
                         ServiceStatus::Finished
                     }
                 }
@@ -248,25 +251,22 @@ impl<'a, T: Sendable> Service<'a, T> {
 
             _ => {
                 if self.retry_count == 0 {
-                    log::info!(
+                    println!(
                         "recevied {} response, retry immediately, retry_count={}",
-                        status,
-                        self.retry_count,
+                        status, self.retry_count,
                     );
                     self.retry_count += 1;
                     ServiceStatus::Timeount(Duration::from_secs(0))
                 } else if self.retry_count <= 5 {
                     let s = 2_u64.pow(self.retry_count - 1_u32); // 2^n
-                    log::info!(
+                    println!(
                         "recevied {} response, retry after {} seconds, retry_count={}",
-                        status,
-                        s,
-                        self.retry_count,
+                        status, s, self.retry_count,
                     );
                     self.retry_count += 1;
                     ServiceStatus::Timeount(Duration::from_secs(s))
                 } else {
-                    log::info!("recevied {} response, reached max retry count", status);
+                    println!("recevied {} response, reached max retry count", status);
                     ServiceStatus::Finished
                 }
             }
